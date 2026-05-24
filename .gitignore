@@ -1,0 +1,25 @@
+# Patient data — never commit
+cases.db
+cases_images/
+
+# Secrets — never commit
+.streamlit/secrets.toml
+
+# Test files
+test_opg.jpg
+test_enh_*.jpg
+test_*.pdf
+test_analysis_result.txt
+generate_full_report.py
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Logs
+*.log
+streamlit_dental.log
