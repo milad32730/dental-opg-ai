@@ -605,6 +605,195 @@ def tab_feedback():
             )
 
 
+def tab_image_tools():
+    from image_tools import (
+        parse_fdi_findings, create_finding_overlay,
+        density_heatmap, create_multipanel_grid,
+        quadrant_zoom, quadrant_options, brightness_profile,
+    )
+
+    st.subheader("🖼️ Advanced Image Analysis Tools")
+
+    if 'img' not in st.session_state:
+        st.info("Upload an OPG in the **Analyse OPG** tab first to use these tools.")
+        return
+
+    img = st.session_state['img']
+
+    tool_tabs = st.tabs([
+        "🎯 AI Finding Overlay",
+        "🌡️ Bone Density Heatmap",
+        "📊 Multi-Enhancement Grid",
+        "🔍 Quadrant Zoom",
+        "📈 Brightness Profile",
+    ])
+
+    # ── 1. AI Finding Overlay ─────────────────────────────────────────────────
+    with tool_tabs[0]:
+        st.markdown("**AI Finding Overlay** — colour-coded FDI markers parsed from the analysis report.")
+        st.caption(
+            "🔴 Urgent  🟠 Pathology  🟣 Impacted  🔵 Restoration  🟡 Monitor"
+        )
+
+        if 'analysis' not in st.session_state:
+            st.warning("Run a **Full AI Analysis** first (Analyse OPG tab) to enable the finding overlay.")
+        else:
+            col_ov, col_ctrl = st.columns([3, 1])
+            with col_ctrl:
+                show_labels = st.checkbox("Show tooth labels", value=True, key="ov_labels")
+                show_legend = st.checkbox("Show legend",       value=True, key="ov_legend")
+                if st.button("🎨 Generate Overlay", type="primary", use_container_width=True, key="btn_overlay"):
+                    with st.spinner("Parsing findings and rendering overlay…"):
+                        findings = parse_fdi_findings(st.session_state['analysis'])
+                        overlay_img = create_finding_overlay(
+                            img, findings,
+                            show_labels=show_labels,
+                            show_legend=show_legend,
+                        )
+                        st.session_state['overlay_img']      = overlay_img
+                        st.session_state['overlay_findings'] = findings
+
+            with col_ov:
+                if 'overlay_img' in st.session_state:
+                    st.image(st.session_state['overlay_img'],
+                             use_column_width=True, caption="AI Finding Overlay")
+                    findings = st.session_state.get('overlay_findings', [])
+                    if findings:
+                        urgent = [f for f in findings if f['urgency'] == 'urgent']
+                        if urgent:
+                            st.error(f"⚠️ {len(urgent)} urgent finding(s): "
+                                     f"{', '.join(f['tooth'] for f in urgent)}")
+                        st.caption(f"{len(findings)} teeth with findings identified from report")
+                    dl = get_image_bytes(st.session_state['overlay_img'])
+                    st.download_button("⬇️ Download Overlay", data=dl,
+                                       file_name="finding_overlay.jpg", mime="image/jpeg",
+                                       key="dl_overlay")
+                else:
+                    st.image(img, use_column_width=True, caption="Upload will appear here after overlay")
+
+    # ── 2. Bone Density Heatmap ───────────────────────────────────────────────
+    with tool_tabs[1]:
+        st.markdown("**Bone Density Heatmap** — CLAHE-enhanced false-colour density map.")
+        st.caption("Hot (red/orange) = low density · Cool (blue/purple) = high density")
+
+        col_hm, col_ctrl = st.columns([3, 1])
+        with col_ctrl:
+            alpha = st.slider("Heatmap opacity", 0.2, 0.9, 0.55, 0.05, key="hm_alpha")
+            colormap_choice = st.selectbox(
+                "Colormap", ["INFERNO", "JET", "HOT", "PLASMA", "VIRIDIS"], key="hm_cmap"
+            )
+            if st.button("🌡️ Generate Heatmap", type="primary", use_container_width=True, key="btn_heatmap"):
+                with st.spinner("Computing density heatmap…"):
+                    import cv2
+                    cmap_map = {
+                        "INFERNO": cv2.COLORMAP_INFERNO,
+                        "JET":     cv2.COLORMAP_JET,
+                        "HOT":     cv2.COLORMAP_HOT,
+                        "PLASMA":  cv2.COLORMAP_PLASMA,
+                        "VIRIDIS": cv2.COLORMAP_VIRIDIS,
+                    }
+                    hmap = density_heatmap(img, alpha=alpha, colormap=cmap_map[colormap_choice])
+                    st.session_state['heatmap_img'] = hmap
+
+        with col_hm:
+            if 'heatmap_img' in st.session_state:
+                st.image(st.session_state['heatmap_img'],
+                         use_column_width=True, caption="Bone Density Heatmap")
+                dl = get_image_bytes(st.session_state['heatmap_img'])
+                st.download_button("⬇️ Download Heatmap", data=dl,
+                                   file_name="density_heatmap.jpg", mime="image/jpeg",
+                                   key="dl_heatmap")
+            else:
+                st.image(img, use_column_width=True, caption="Original OPG")
+
+    # ── 3. Multi-Enhancement Grid ─────────────────────────────────────────────
+    with tool_tabs[2]:
+        st.markdown("**Multi-Enhancement Grid** — Original + 6 enhancement modes + Density Map in one view.")
+        st.caption("Useful for quickly comparing how different processing modes reveal different features.")
+
+        if st.button("📊 Generate Grid", type="primary", key="btn_grid"):
+            with st.spinner("Rendering all 7 panels — please wait…"):
+                grid = create_multipanel_grid(img, cols=3)
+                st.session_state['grid_img'] = grid
+
+        if 'grid_img' in st.session_state:
+            st.image(st.session_state['grid_img'],
+                     use_column_width=True, caption="7-Panel Enhancement Grid")
+            dl = get_image_bytes(st.session_state['grid_img'])
+            st.download_button("⬇️ Download Grid", data=dl,
+                               file_name="enhancement_grid.jpg", mime="image/jpeg",
+                               key="dl_grid")
+
+    # ── 4. Quadrant Zoom ──────────────────────────────────────────────────────
+    with tool_tabs[3]:
+        st.markdown("**Quadrant Zoom** — magnified, enhanced crop of any jaw region or TMJ.")
+
+        col_zq, col_ctrl = st.columns([3, 1])
+        with col_ctrl:
+            quad = st.selectbox("Region", quadrant_options(), key="qz_region")
+            enh  = st.selectbox("Enhancement",
+                                ["clahe", "contrast", "sharpen", "original", "edges"],
+                                key="qz_enh")
+            if st.button("🔍 Zoom In", type="primary", use_container_width=True, key="btn_zoom"):
+                with st.spinner(f"Extracting {quad}…"):
+                    zoomed = quadrant_zoom(img, quad, enhance=enh)
+                    st.session_state['zoomed_img']   = zoomed
+                    st.session_state['zoomed_label'] = quad
+
+        with col_zq:
+            if 'zoomed_img' in st.session_state:
+                st.image(st.session_state['zoomed_img'],
+                         use_column_width=True,
+                         caption=st.session_state.get('zoomed_label', 'Zoomed region'))
+                dl = get_image_bytes(st.session_state['zoomed_img'])
+                label = st.session_state.get('zoomed_label', 'region').replace(' ', '_')[:30]
+                st.download_button("⬇️ Download Zoom", data=dl,
+                                   file_name=f"zoom_{label}.jpg", mime="image/jpeg",
+                                   key="dl_zoom")
+            else:
+                st.image(img, use_column_width=True, caption="Original OPG")
+
+    # ── 5. Brightness Profile ─────────────────────────────────────────────────
+    with tool_tabs[4]:
+        st.markdown("**Brightness Profile** — horizontal pixel-brightness scan as a bone density proxy.")
+        st.caption(
+            "X-axis = left → right position · Y-axis = mean pixel brightness (0 = black, 255 = white). "
+            "Dips in the bone regions may indicate lucencies or reduced trabecular density."
+        )
+
+        col_ctrl, col_chart = st.columns([1, 3])
+        with col_ctrl:
+            region = st.selectbox(
+                "Jaw region",
+                ["full", "upper_jaw", "lower_jaw", "mandible"],
+                format_func=lambda x: x.replace('_', ' ').title(),
+                key="bp_region_sel",
+            )
+            if st.button("📈 Compute Profile", type="primary", use_container_width=True, key="btn_bp"):
+                with st.spinner("Computing brightness profile…"):
+                    x_pos, brightness = brightness_profile(img, region=region)
+                    st.session_state['bp_x']      = x_pos
+                    st.session_state['bp_y']      = brightness
+                    st.session_state['bp_region'] = region
+
+        with col_chart:
+            if 'bp_x' in st.session_state:
+                import pandas as pd
+                df = pd.DataFrame({
+                    "Mean Brightness": st.session_state['bp_y'],
+                }, index=st.session_state['bp_x'])
+                st.line_chart(df, height=320)
+                y = st.session_state['bp_y']
+                region_label = st.session_state.get('bp_region', 'full').replace('_', ' ').title()
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Region",  region_label)
+                c2.metric("Min",     f"{y.min():.0f}")
+                c3.metric("Max",     f"{y.max():.0f}")
+                c4.metric("Mean",    f"{y.mean():.0f}")
+            else:
+                st.info("Select a region and click **Compute Profile**.")
+
+
 def tab_about():
     st.subheader("About Dental OPG AI Assistant")
     st.markdown("""
@@ -694,12 +883,13 @@ def main():
 
     sidebar()
 
-    tabs = st.tabs(["🔬 Analyse OPG", "📁 Case History", "📊 Compare Cases", "🧠 Feedback & Learning", "ℹ️ About"])
+    tabs = st.tabs(["🔬 Analyse OPG", "🖼️ Image Tools", "📁 Case History", "📊 Compare Cases", "🧠 Feedback & Learning", "ℹ️ About"])
     with tabs[0]: tab_analyze()
-    with tabs[1]: tab_history()
-    with tabs[2]: tab_compare()
-    with tabs[3]: tab_feedback()
-    with tabs[4]: tab_about()
+    with tabs[1]: tab_image_tools()
+    with tabs[2]: tab_history()
+    with tabs[3]: tab_compare()
+    with tabs[4]: tab_feedback()
+    with tabs[5]: tab_about()
 
 
 if __name__ == "__main__":
