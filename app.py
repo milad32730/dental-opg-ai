@@ -154,6 +154,24 @@ def sidebar():
 
         st.markdown("---")
 
+        # ── Learning stats ────────────────────────────────────────────────────
+        try:
+            from knowledge_base import get_feedback_stats
+            stats = get_feedback_stats()
+            if stats:
+                st.markdown("### 🧠 AI Learning Progress")
+                st.caption(f"Trained on **{stats['total']}** reviewed findings")
+                acc = stats['accuracy_pct']
+                color = "green" if acc >= 80 else "orange" if acc >= 60 else "red"
+                st.markdown(f"Confirmed accuracy: :{color}[**{acc}%**]")
+                c1, c2 = st.columns(2)
+                c1.metric("Confirmed", stats['confirmed'], help="AI was correct")
+                c2.metric("Corrected", stats['corrected'] + stats['missed'] + stats['false_positive'],
+                          help="AI was wrong — learned from these")
+                st.markdown("---")
+        except Exception:
+            pass
+
         cases = get_all_cases()
         col1, col2 = st.columns(2)
         col1.metric("Total Cases", len(cases))
@@ -456,6 +474,137 @@ def tab_compare():
                     st.markdown(analysis)
 
 
+def tab_feedback():
+    from knowledge_base import (
+        save_feedback, get_all_feedback, get_feedback_stats, build_learning_context
+    )
+    from database import get_all_cases
+
+    st.subheader("🧠 Dentist Feedback & AI Learning")
+    st.caption(
+        "Review AI findings case by case. Every correction is learned and applied to future analyses."
+    )
+
+    # ── Stats banner ──────────────────────────────────────────────────────────
+    stats = get_feedback_stats()
+    if stats:
+        sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+        sc1.metric("Total Reviewed",   stats["total"])
+        sc2.metric("Confirmed ✓",      stats["confirmed"])
+        sc3.metric("Corrected",        stats["corrected"])
+        sc4.metric("Missed (added)",   stats["missed"])
+        sc5.metric("False Positives",  stats["false_positive"])
+        acc = stats["accuracy_pct"]
+        color = "green" if acc >= 80 else "orange" if acc >= 60 else "red"
+        st.markdown(f"**AI confirmed accuracy: :{color}[{acc}%]** — improves as you review more cases.")
+        st.markdown("---")
+
+    # ── Current learned patterns ──────────────────────────────────────────────
+    lc = build_learning_context()
+    if lc:
+        with st.expander("📚 What the AI has learned so far"):
+            st.markdown(lc)
+        st.markdown("---")
+
+    # ── Case selector ─────────────────────────────────────────────────────────
+    cases = get_all_cases()
+    if not cases:
+        st.info("No cases yet. Run an analysis first, then return here to give feedback.")
+        return
+
+    case_opts = {
+        f"Case #{c[0]} — {c[1] or 'Unknown'} — {c[5]}": c[0]
+        for c in cases
+    }
+    selected_label = st.selectbox("Select a case to review", list(case_opts.keys()))
+    case_id = case_opts[selected_label]
+
+    # Find the case
+    case = next((c for c in cases if c[0] == case_id), None)
+    if not case:
+        return
+
+    _, pname, pid, dname, cname, date, img_path, analysis, _, notes, _ = case
+
+    col_img, col_analysis = st.columns([1, 2])
+    with col_img:
+        if img_path and Path(img_path).exists():
+            with open(img_path, "rb") as f:
+                raw = f.read()
+            img, _ = load_image(raw, Path(img_path).name)
+            st.image(img, use_column_width=True)
+        st.caption(f"Patient: {pname} | {date}")
+
+    with col_analysis:
+        with st.container(border=True):
+            st.markdown(analysis[:2000] + ("…" if len(analysis) > 2000 else ""))
+
+    st.markdown("---")
+    st.markdown("### Rate AI Findings for This Case")
+    st.caption("Submit one row per finding you want to correct or confirm.")
+
+    CATEGORIES = [
+        "caries", "periapical", "periodontal_bone", "impacted_tooth",
+        "restoration", "bone_quality", "tmj", "sinus", "calcification",
+        "root_abnormality", "general",
+    ]
+    VERDICTS = {
+        "confirmed":      "✅ Confirmed — AI was correct",
+        "corrected":      "✏️ Corrected — AI was wrong, here is the right finding",
+        "missed":         "➕ Missed — AI didn't report this, but it's present",
+        "false_positive": "❌ False Positive — AI reported this, but it's NOT present",
+    }
+
+    with st.form(f"feedback_form_{case_id}", clear_on_submit=True):
+        fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 1])
+        with fb_col1:
+            category    = st.selectbox("Category", CATEGORIES)
+            tooth_fdi   = st.text_input("Tooth (FDI)", placeholder="e.g. 36, 48, or leave blank")
+        with fb_col2:
+            verdict_key = st.selectbox("Verdict", list(VERDICTS.keys()),
+                                       format_func=lambda k: VERDICTS[k])
+            severity    = st.selectbox("Severity (your assessment)",
+                                       ["", "mild", "moderate", "severe", "not applicable"])
+        with fb_col3:
+            ai_finding   = st.text_area("AI finding (copy from report)", height=80,
+                                        placeholder="Paste the relevant sentence from the AI report")
+            correct_find = st.text_area("Correct finding (if corrected/missed)", height=80,
+                                        placeholder="Describe the correct clinical finding")
+
+        fb_notes = st.text_input("Additional notes (optional)")
+        submitted = st.form_submit_button("💾 Submit Feedback", type="primary", use_container_width=True)
+
+        if submitted:
+            if not ai_finding and verdict_key != "missed":
+                st.warning("Please paste the AI finding you are rating.")
+            else:
+                save_feedback(
+                    case_id=case_id,
+                    category=category,
+                    tooth_fdi=tooth_fdi.strip(),
+                    ai_finding=ai_finding.strip(),
+                    verdict=verdict_key,
+                    correct_finding=correct_find.strip(),
+                    severity=severity,
+                    notes=fb_notes.strip(),
+                )
+                st.success(f"Feedback saved — AI will learn from this on next analysis.")
+
+    # ── Feedback history for this case ────────────────────────────────────────
+    all_fb = get_all_feedback()
+    case_fb = [r for r in all_fb if r[1] == case_id]
+    if case_fb:
+        st.markdown(f"**{len(case_fb)} feedback entries for this case:**")
+        for row in case_fb:
+            _, _, cat, tooth, ai_f, verdict, correct_f, sev, fb_note, ts = row
+            badge = {"confirmed": "✅", "corrected": "✏️",
+                     "missed": "➕", "false_positive": "❌"}.get(verdict, "•")
+            st.markdown(
+                f"{badge} **{cat}** {f'[{tooth}]' if tooth else ''} — "
+                f"_{verdict}_ {f'→ {correct_f}' if correct_f else ''}"
+            )
+
+
 def tab_about():
     st.subheader("About Dental OPG AI Assistant")
     st.markdown("""
@@ -545,11 +694,12 @@ def main():
 
     sidebar()
 
-    tabs = st.tabs(["🔬 Analyse OPG", "📁 Case History", "📊 Compare Cases", "ℹ️ About"])
+    tabs = st.tabs(["🔬 Analyse OPG", "📁 Case History", "📊 Compare Cases", "🧠 Feedback & Learning", "ℹ️ About"])
     with tabs[0]: tab_analyze()
     with tabs[1]: tab_history()
     with tabs[2]: tab_compare()
-    with tabs[3]: tab_about()
+    with tabs[3]: tab_feedback()
+    with tabs[4]: tab_about()
 
 
 if __name__ == "__main__":

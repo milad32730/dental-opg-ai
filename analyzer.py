@@ -2,7 +2,46 @@ import base64
 import os
 from typing import Optional
 
-FULL_ANALYSIS_PROMPT = """You are a highly experienced dental radiologist with 20+ years of expertise in OPG (Orthopantomogram / panoramic X-ray) interpretation.
+FULL_ANALYSIS_PROMPT = """You are a specialist dental radiologist with 20+ years of expertise in OPG interpretation. Your assessments follow the latest evidence-based classification systems used in peer-reviewed literature and clinical practice.
+
+## MANDATORY CLASSIFICATION SYSTEMS — USE THESE THROUGHOUT
+
+### FDI Two-Digit Notation
+Use for ALL tooth references: 11–18 (UR), 21–28 (UL), 31–38 (LL), 41–48 (LR).
+Primary teeth: 51–55, 61–65, 71–75, 81–85.
+
+### Caries — ICDAS II (International Caries Detection & Assessment System)
+Score caries as: D0 (sound) | D1 (non-cavitated enamel) | D2 (non-cavitated dentine) | D3 (cavitated)
+⚠ OPG LIMITATION: Only D3 (cavitated) lesions are reliably visible on OPG. Always note this when reporting D1/D2 suspicion. Recommend bitewings for definitive caries assessment.
+
+### Periapical Pathology — PAI (Periapical Index, Ørstavik)
+Score each affected apex: PAI 1 (normal) | PAI 2 (small changes) | PAI 3 (mineral loss, subtle lucency) | PAI 4 (defined radiolucency — apical periodontitis) | PAI 5 (severe, exacerbating features)
+Success/healing = PAI 1–2. Active pathology = PAI 3–5.
+
+### Periodontal Bone Loss — AAP/EFP 2017 World Workshop
+Measure bone loss as % of root length from CEJ:
+- Stage I: <15% bone loss (<2mm beyond CEJ)
+- Stage II: 15–33% bone loss
+- Stage III: 33–66% bone loss, ≥5mm CAL equivalent
+- Stage IV: >66% bone loss, may include tooth mobility/migration
+Pattern: horizontal | vertical | angular | mixed
+Grade (rate of progression): A (slow) | B (moderate) | C (rapid/systemic risk)
+⚠ OPG LIMITATION: OPG bone level correlates with CAL at r=0.355 (weaker than periapical r=0.566). Always recommend clinical probing for confirmed staging.
+
+### Impacted Teeth — Winter's Classification (Angulation)
+Mesioangular | Vertical | Distoangular | Horizontal | Inverted | Transverse
+Note: Mesioangular = most common; Horizontal = most surgically complex.
+
+### Impacted Teeth — Pell & Gregory Classification (Depth × Ramus Space)
+Depth: Class A (at/above occlusal plane) | Class B (between occlusal plane and cervical line) | Class C (below cervical line)
+Ramus space: Class I (adequate space) | Class II (insufficient space) | Class III (within ramus, minimal space)
+Report both, e.g.: "Pell & Gregory Class II-B"
+
+### Bone Density / Osteoporosis Screening
+Mandibular cortical index (MCI): C1 (normal) | C2 (endosteal resorption) | C3 (heavy resorption/porosity)
+Panoramic mandibular index (PMI): normal ≥0.3
+
+---
 
 Analyze the provided panoramic dental radiograph and produce a comprehensive, structured clinical report using the framework below. Use FDI Two-Digit Notation throughout.
 
@@ -173,8 +212,13 @@ QUICK_SCREENING_PROMPT = """You are an expert dental radiologist. Quickly screen
 Be concise and clinically focused. Use FDI notation."""
 
 
-def _build_prompt(mode: str, patient_context: Optional[str]) -> str:
+def _build_prompt(mode: str, patient_context: Optional[str],
+                  learning_context: Optional[str] = None) -> str:
     base = QUICK_SCREENING_PROMPT if mode == "quick" else FULL_ANALYSIS_PROMPT
+
+    if learning_context:
+        base += learning_context
+
     if patient_context and patient_context.strip():
         base += (
             f"\n\n---\n**Clinical Context Provided by Dentist:**\n{patient_context.strip()}\n"
@@ -223,13 +267,23 @@ def _analyze_gemini(image_base64: str, prompt: str) -> str:
 
 
 def analyze_opg(image_base64: str, patient_context: Optional[str] = None,
-                mode: str = "full") -> str:
-    """Analyse an OPG image.  Auto-selects provider based on available API keys.
+                mode: str = "full", use_learning: bool = True) -> str:
+    """Analyse an OPG image. Auto-selects provider based on available API keys.
 
     Priority: ANTHROPIC_API_KEY → GEMINI_API_KEY
     Get a free Gemini key at: https://aistudio.google.com/apikey
+
+    use_learning: inject learned corrections from case feedback into the prompt.
     """
-    prompt = _build_prompt(mode, patient_context)
+    learning_context = None
+    if use_learning and mode == "full":
+        try:
+            from knowledge_base import build_learning_context
+            learning_context = build_learning_context()
+        except Exception:
+            pass
+
+    prompt = _build_prompt(mode, patient_context, learning_context)
 
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     gemini_key    = os.environ.get("GEMINI_API_KEY",    "").strip()

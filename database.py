@@ -6,6 +6,7 @@ DB_PATH = Path(__file__).parent / "cases.db"
 
 
 def init_db():
+    from knowledge_base import init_knowledge_tables
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS cases (
@@ -23,6 +24,7 @@ def init_db():
     )''')
     conn.commit()
     conn.close()
+    init_knowledge_tables()
 
 
 def save_case(patient_name, patient_id, dentist_name, clinic_name,
