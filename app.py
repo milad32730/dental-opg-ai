@@ -1122,6 +1122,33 @@ def tab_image_tools():
 
 def tab_about():
     st.subheader("About Dental OPG AI Assistant")
+
+    # ── Standalone HTML download card ─────────────────────────────────────────
+    _html_path = Path(__file__).parent / "dental_ai_standalone.html"
+    if _html_path.exists():
+        _html_bytes = _html_path.read_bytes()
+        st.markdown("""
+<div style="background:linear-gradient(135deg,#134e4a,#0f766e);
+            border-radius:10px;padding:18px 22px;margin-bottom:18px;
+            border:1px solid #0d9488;">
+  <h3 style="color:#ccfbf1;margin:0 0 6px 0;">💻 Standalone Version Available</h3>
+  <p style="color:#99f6e4;margin:0 0 12px 0;font-size:14px;">
+    A <strong>zero-install</strong> single-file HTML agent — open in any browser, no Python or server needed.
+    Uses Gemini API directly from the browser. Works offline after first load.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+        st.download_button(
+            label="⬇️ Download Standalone HTML Agent",
+            data=_html_bytes,
+            file_name="dental_ai_standalone.html",
+            mime="text/html",
+            help="Open this file in Chrome or Edge — enter your Gemini API key once and start analysing OPGs immediately",
+            use_container_width=False,
+        )
+        st.caption("Free Gemini key: [aistudio.google.com/apikey](https://aistudio.google.com/apikey) — 1,500 analyses/day at no cost")
+        st.divider()
+
     st.markdown("""
 ### What This Tool Does
 The **Dental OPG AI Assistant** uses Claude's vision AI to assist dental professionals in
