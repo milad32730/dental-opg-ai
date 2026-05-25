@@ -322,27 +322,37 @@ All findings must be correlated with clinical examination and verified by the tr
             st.markdown("---")
             ac1, ac2, ac3 = st.columns(3)
 
-            # PDF download
-            img_bytes_pdf = get_image_bytes(st.session_state['img'])
-            pdf_bytes = generate_pdf_report(
-                st.session_state['analysis'],
-                st.session_state.get('a_patient_name', ''),
-                st.session_state.get('a_patient_id',   ''),
-                st.session_state.get('a_dentist_name', ''),
-                st.session_state.get('a_clinic_name',  ''),
-                img_bytes=img_bytes_pdf,
-            )
             fname_base = (
                 f"OPG_{st.session_state.get('a_patient_name') or 'patient'}_"
                 f"{datetime.now().strftime('%Y%m%d_%H%M')}"
             )
-            ac1.download_button(
-                "📄 Download PDF Report",
-                data=pdf_bytes,
-                file_name=f"{fname_base}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
+
+            # ── PDF: lazy-generate only on explicit button click ──────────────
+            # Never pre-compute on page load — avoids auto-download triggers
+            with ac1:
+                if st.button("📄 Generate PDF Report", use_container_width=True,
+                             key="btn_gen_pdf"):
+                    with st.spinner("Building PDF…"):
+                        img_bytes_pdf = get_image_bytes(st.session_state['img'])
+                        st.session_state['cached_pdf']      = generate_pdf_report(
+                            st.session_state['analysis'],
+                            st.session_state.get('a_patient_name', ''),
+                            st.session_state.get('a_patient_id',   ''),
+                            st.session_state.get('a_dentist_name', ''),
+                            st.session_state.get('a_clinic_name',  ''),
+                            img_bytes=img_bytes_pdf,
+                        )
+                        st.session_state['cached_pdf_name'] = fname_base
+
+                if 'cached_pdf' in st.session_state:
+                    st.download_button(
+                        "⬇️ Download PDF Report",
+                        data=st.session_state['cached_pdf'],
+                        file_name=f"{st.session_state.get('cached_pdf_name', fname_base)}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="dl_clinical_pdf",
+                    )
 
             # Save to history
             with ac2:
@@ -364,7 +374,7 @@ All findings must be correlated with clinical examination and verified by the tr
                     )
                     st.success(f"Saved — Case ID: {cid}")
 
-            # Plain-text download
+            # Plain-text download (text is tiny — fine to serve directly)
             ac3.download_button(
                 "📝 Download as Text",
                 data=st.session_state['analysis'],
@@ -409,22 +419,32 @@ def tab_history():
 
                 dl1, dl2, dl3 = st.columns(3)
 
-                # Re-generate PDF
-                if img_path and Path(img_path).exists():
-                    with open(img_path, 'rb') as f:
-                        raw_pdf = f.read()
-                    img_pdf, _ = load_image(raw_pdf, Path(img_path).name)
-                    pdf = generate_pdf_report(
-                        analysis, pname, pid, dname, cname, get_image_bytes(img_pdf)
-                    )
-                    dl1.download_button(
-                        "📄 PDF",
-                        data=pdf,
-                        file_name=f"OPG_{pname}_{date[:10]}.pdf",
-                        mime="application/pdf",
-                        key=f"pdf_{cid}",
-                        use_container_width=True,
-                    )
+                # ── Lazy PDF: generate only when button clicked ───────────────
+                pdf_ss_key = f"hist_pdf_{cid}"
+                with dl1:
+                    if st.button("📄 PDF", key=f"genpdf_{cid}",
+                                 use_container_width=True):
+                        if img_path and Path(img_path).exists():
+                            with open(img_path, 'rb') as _f:
+                                _raw = _f.read()
+                            _img, _ = load_image(_raw, Path(img_path).name)
+                            st.session_state[pdf_ss_key] = generate_pdf_report(
+                                analysis, pname, pid, dname, cname,
+                                get_image_bytes(_img),
+                            )
+                        else:
+                            st.session_state[pdf_ss_key] = generate_pdf_report(
+                                analysis, pname, pid, dname, cname)
+
+                    if pdf_ss_key in st.session_state:
+                        st.download_button(
+                            "⬇️ Download",
+                            data=st.session_state[pdf_ss_key],
+                            file_name=f"OPG_{pname}_{date[:10]}.pdf",
+                            mime="application/pdf",
+                            key=f"dlpdf_{cid}",
+                            use_container_width=True,
+                        )
 
                 dl2.download_button(
                     "📝 Text",
