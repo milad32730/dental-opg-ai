@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🦷 Dental OPG AI Assistant — Standalone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* ── Variables ─────────────────────────────────────────────────────────── */
+:root{
+  --bg:       #0f172a;
+  --card:     #1e293b;
+  --card2:    #0f1f33;
+  --border:   #334155;
+  --primary:  #0d9488;
+  --primary-h:#0f766e;
+  --danger:   #dc2626;
+  --warn:     #b45309;
+  --success:  #15803d;
+  --text:     #f1f5f9;
+  --muted:    #94a3b8;
+  --radius:   10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);
+     min-height:100vh;padding:0 0 40px}
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+.app-header{
+  background:linear-gradient(135deg,#0d2137 0%,#0d9488 100%);
+  padding:18px 32px;display:flex;align-items:center;gap:14px;
+  border-bottom:1px solid #0d9488;
+}
+.app-header h1{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.app-header p{font-size:12px;color:#a7f3d0;margin-top:2px}
+.badge{background:#0d948880;border:1px solid #0d9488;border-radius:20px;
+       padding:2px 10px;font-size:11px;color:#5eead4;white-space:nowrap}
+
+/* ── Layout ───────────────────────────────────────────────────────────── */
+.container{max-width:1280px;margin:0 auto;padding:20px 20px 0}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px}
+.card h3{font-size:14px;font-weight:600;color:var(--primary);margin-bottom:12px;
+         display:flex;align-items:center;gap:6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.gap{margin-top:16px}
+
+/* ── Inputs ───────────────────────────────────────────────────────────── */
+input,select{width:100%;background:#0f172a;border:1px solid var(--border);border-radius:6px;
+             padding:8px 11px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;
+             outline:none;transition:border .2s}
+input:focus,select:focus{border-color:var(--primary)}
+input[type=password]{letter-spacing:2px}
+label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px}
+.input-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:7px;
+     font-size:13px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;
+     border:none;transition:all .15s}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-h)}
+.btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--primary);color:var(--primary)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.action-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+
+/* ── Upload zone ──────────────────────────────────────────────────────── */
+.drop-zone{border:2px dashed var(--border);border-radius:var(--radius);
+           padding:32px;text-align:center;cursor:pointer;transition:all .2s;
+           background:var(--card2)}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:#0d948810}
+.drop-icon{font-size:42px;margin-bottom:8px}
+.drop-zone p{color:var(--muted);font-size:13px}
+.drop-zone strong{color:var(--text);font-size:15px;display:block;margin-bottom:6px}
+
+/* ── Preview ──────────────────────────────────────────────────────────── */
+.preview-wrap{position:relative;margin-top:14px}
+.preview-wrap img{width:100%;max-height:340px;object-fit:contain;border-radius:8px;
+                  border:1px solid var(--border);background:#000}
+.enh-bar{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.enh-btn{background:var(--card2);border:1px solid var(--border);border-radius:5px;
+         padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s}
+.enh-btn:hover,.enh-btn.active{border-color:var(--primary);color:var(--primary)}
+
+/* ── Metrics strip ────────────────────────────────────────────────────── */
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:16px}
+.metric{background:var(--card);border:1px solid var(--border);border-radius:8px;
+        padding:12px;text-align:center}
+.metric .val{font-size:26px;font-weight:700;line-height:1}
+.metric .lbl{font-size:10px;color:var(--muted);margin-top:4px}
+.m-urgent  .val{color:#dc2626}
+.m-patho   .val{color:#ea580c}
+.m-restore .val{color:#2563eb}
+.m-impact  .val{color:#9333ea}
+.m-missing .val{color:#475569}
+
+/* ── Chart + Plan ─────────────────────────────────────────────────────── */
+.chart-plan{display:grid;grid-template-columns:55% 1fr;gap:16px;margin-top:16px}
+.tooth-svg-wrap{overflow-x:auto}
+.tooth-svg-wrap svg{max-width:100%;height:auto}
+.plan-list{list-style:none;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto}
+.plan-item{border-left:3px solid;padding:7px 10px;border-radius:0 5px 5px 0;font-size:12px;
+           background:#0f1f33;line-height:1.4}
+.p1{border-color:#dc2626;color:#fca5a5}
+.p2{border-color:#b45309;color:#fde68a}
+.p3{border-color:#15803d;color:#86efac}
+.pi{border-color:#0d9488;color:#5eead4}
+.plan-heading{font-size:11px;font-weight:600;margin-top:10px;margin-bottom:3px;
+              padding:2px 8px;border-radius:4px;display:inline-block}
+.ph-1{background:#450a0a;color:#fca5a5}
+.ph-2{background:#451a03;color:#fde68a}
+.ph-3{background:#052e16;color:#86efac}
+.ph-i{background:#042f2e;color:#5eead4}
+
+/* ── Report ───────────────────────────────────────────────────────────── */
+#reportContent{font-size:13px;line-height:1.7;color:#cbd5e1;max-height:600px;
+               overflow-y:auto;padding-right:4px}
+#reportContent h1,#reportContent h2{color:var(--primary);font-size:14px;
+  margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--border)}
+#reportContent h3{color:#7dd3fc;font-size:13px;margin:10px 0 3px}
+#reportContent ul{padding-left:18px}
+#reportContent li{margin-bottom:2px}
+#reportContent p{margin-bottom:6px}
+#reportContent strong{color:#f1f5f9}
+#reportContent em{color:#94a3b8}
+#reportContent code{background:#0f172a;padding:1px 4px;border-radius:3px;font-size:12px}
+
+/* ── Status ───────────────────────────────────────────────────────────── */
+.status-bar{padding:10px 14px;border-radius:7px;font-size:13px;margin-top:12px;display:none}
+.status-info{background:#0c4a6e;border:1px solid #0369a1;color:#7dd3fc}
+.status-ok{background:#052e16;border:1px solid #166534;color:#86efac}
+.status-err{background:#450a0a;border:1px solid #991b1b;color:#fca5a5}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff40;
+         border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;
+         vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Disclaimer ───────────────────────────────────────────────────────── */
+.disclaimer{background:#0c4a6e20;border:1px solid #0369a130;border-radius:7px;
+            padding:10px 14px;font-size:11px;color:#7dd3fc;margin-top:14px}
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+footer{text-align:center;padding:20px;color:var(--muted);font-size:11px;margin-top:24px;
+       border-top:1px solid var(--border)}
+
+@media(max-width:700px){
+  .grid2,.chart-plan,.input-row,.metrics{grid-template-columns:1fr}
+  .app-header{padding:14px 16px}
+  .container{padding:12px 12px 0}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header class="app-header">
+  <div style="font-size:32px">🦷</div>
+  <div>
+    <h1>Dental OPG AI Assistant</h1>
+    <p>AI-powered panoramic radiograph analysis &nbsp;·&nbsp; Clinical decision support</p>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <span class="badge">Standalone HTML</span>
+    <span class="badge">Free · Gemini API</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- ── Config row ─────────────────────────────────────────────────── -->
+  <div class="grid2 gap">
+
+    <!-- API Key -->
+    <div class="card">
+      <h3>🔑 Gemini API Key</h3>
+      <label>API Key (stored locally in your browser)</label>
+      <div style="display:flex;gap:8px">
+        <input type="password" id="apiKey" placeholder="AIzaSy…" oninput="saveKey()">
+        <select id="modelSel" style="width:auto;min-width:170px" onchange="saveKey()">
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash ✨</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+        </select>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <span id="keyStatus" style="font-size:11px;color:var(--muted)">No key set</span>
+        <a href="https://aistudio.google.com/apikey" target="_blank"
+           style="font-size:11px;color:var(--primary);margin-left:auto">
+          Get free key →
+        </a>
+      </div>
+    </div>
+
+    <!-- Patient Info -->
+    <div class="card">
+      <h3>👤 Patient Information</h3>
+      <div class="input-row">
+        <div><label>Patient Name</label><input id="patientName" placeholder="Full name"></div>
+        <div><label>Patient ID / Chart #</label><input id="patientId" placeholder="P-12345"></div>
+        <div><label>Dentist Name</label><input id="dentistName" placeholder="Dr. Smith"></div>
+        <div><label>Clinic / Practice</label><input id="clinicName" placeholder="Smile Dental"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Upload ─────────────────────────────────────────────────────── -->
+  <div class="card gap">
+    <h3>📤 Upload OPG Radiograph</h3>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+      <div class="drop-icon">🦷</div>
+      <strong>Drop OPG image here or click to browse</strong>
+      <p>Supports JPEG · PNG · BMP · TIFF &nbsp;|&nbsp; DICOM: use JPEG export from your viewer</p>
+    </div>
+    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff" hidden
+           onchange="handleFileInput(this)">
+
+    <!-- Preview -->
+    <div id="previewSection" style="display:none">
+      <div class="preview-wrap">
+        <img id="preview" alt="OPG Preview">
+      </div>
+      <div class="enh-bar" id="enhBar">
+        <span style="font-size:11px;color:var(--muted);align-self:center">Enhance:</span>
+        <button class="enh-btn active" onclick="applyEnh(this,'none')">Original</button>
+        <button class="enh-btn" onclick="applyEnh(this,'contrast(2) brightness(1.1)')">CLAHE</button>
+        <button class="enh-btn" onclick="applyEnh(this,'contrast(1.6)')">Contrast</button>
+        <button class="enh-btn" onclick="applyEnh(this,'brightness(1.4) contrast(1.3)')">Brighten</button>
+        <button class="enh-btn" onclick="applyEnh(this,'contrast(2.5) saturate(0)')">Sharpen</button>
+        <button class="enh-btn" onclick="applyEnh(this,'invert(1)')">Inverted</button>
+      </div>
+    </div>
+
+    <!-- Analysis buttons -->
+    <div id="analysisActions" style="display:none" class="action-row">
+      <button class="btn btn-primary" id="btnFull" onclick="runAnalysis('full')">
+        🔬 Full AI Analysis
+      </button>
+      <button class="btn btn-secondary" id="btnQuick" onclick="runAnalysis('quick')">
+        ⚡ Quick Screening
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="clearAll()" style="margin-left:auto">
+        🗑 Clear
+      </button>
+    </div>
+
+    <div id="statusBar" class="status-bar"></div>
+  </div>
+
+  <!-- ── Results (hidden until analysis) ─────────────────────────────── -->
+  <div id="resultsSection" style="display:none">
+
+    <!-- Metrics -->
+    <div class="metrics" id="metricsStrip"></div>
+
+    <!-- Tooth chart + Treatment plan -->
+    <div class="chart-plan">
+      <div class="card">
+        <h3>🦷 Dental Arch Chart</h3>
+        <div class="tooth-svg-wrap" id="toothChartDiv"></div>
+      </div>
+      <div class="card" style="overflow:hidden">
+        <h3>📋 Treatment Priorities</h3>
+        <div id="treatmentPlanDiv"></div>
+      </div>
+    </div>
+
+    <!-- Full report -->
+    <div class="card gap">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin-bottom:0">📋 AI Radiographic Report</h3>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="copyReport()">📋 Copy</button>
+        </div>
+      </div>
+      <div id="reportContent"><p style="color:var(--muted)">Analysis will appear here…</p></div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="disclaimer">
+      ⚕️ <strong>Clinical Disclaimer:</strong> This AI-assisted report is a clinical decision-support
+      tool only. All findings must be correlated with clinical examination and verified by a qualified
+      dental professional before any treatment decisions are made.
+    </div>
+
+    <!-- Download strip -->
+    <div class="action-row" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="downloadPDF()">📄 Download PDF Report</button>
+      <button class="btn btn-secondary" onclick="downloadText()">📝 Download Text</button>
+      <button class="btn btn-secondary" onclick="downloadJSON()">🗂 Export JSON</button>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<footer>
+  🦷 Dental OPG AI Assistant &nbsp;·&nbsp; Standalone Edition &nbsp;·&nbsp;
+  Powered by Google Gemini &nbsp;·&nbsp; Open Source · Free
+</footer>
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────── -->
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let currentImageDataUrl  = null;
+let currentImageBase64   = null;
+let currentMimeType      = 'image/jpeg';
+let currentAnalysis      = null;
+let currentFindings      = [];
+let currentMissing       = [];
+let currentRecs          = {};
+
+// ── Prompts ────────────────────────────────────────────────────────────────
+const FULL_PROMPT = `You are a specialist dental radiologist with 20+ years of expertise in OPG interpretation. Your assessments follow the latest evidence-based classification systems.
+
+## MANDATORY CLASSIFICATION SYSTEMS
+- **FDI notation**: 11–18 (UR), 21–28 (UL), 31–38 (LL), 41–48 (LR)
+- **Caries (ICDAS II)**: D0 (sound) | D1 (non-cavitated enamel) | D2 (dentine) | D3 (cavitated). OPG only reliably shows D3.
+- **Periapical (PAI)**: PAI 1 (normal) → PAI 5 (severe). Active pathology = PAI 3–5.
+- **Periodontal (AAP/EFP 2017)**: Stage I (<15% bone loss) → IV (>66%). Grade A/B/C.
+- **Impacted teeth (Winter's)**: Mesioangular | Vertical | Distoangular | Horizontal
+- **Pell & Gregory**: Depth A/B/C × Ramus I/II/III
+
+---
+
+Analyse the provided panoramic OPG and produce a comprehensive structured report:
+
+## 1. EXECUTIVE SUMMARY
+3–5 sentences covering the most significant findings.
+
+## 2. TOOTH INVENTORY
+### Present Teeth
+### Missing Teeth / Edentulous Areas
+### Impacted / Unerupted Teeth
+### Partially Erupted
+
+## 3. EXISTING RESTORATIONS & PROSTHETICS
+Fillings, crowns, bridges, implants, RCT, posts.
+
+## 4. PATHOLOGY FINDINGS
+### 4a. Caries
+For each: Tooth (FDI), surface, severity, Confidence: [HIGH]/[MEDIUM]/[LOW]
+### 4b. Periapical Pathology
+For each: Tooth, description, PAI score, differential, Confidence: [HIGH]/[MEDIUM]/[LOW]
+### 4c. Periodontal Bone Level Assessment
+Overall level, pattern, severity, Stage/Grade, furcation.
+### 4d. Cysts and Lesions
+Location, size, differential, Confidence: [HIGH]/[MEDIUM]/[LOW]
+### 4e. Root Abnormalities
+Dilacerations, resorption, fractures.
+### 4f. Calcifications
+Pulp stones, sialoliths, carotid calcifications.
+
+## 5. ANATOMICAL STRUCTURES
+### Maxillary Sinuses (bilateral)
+### Mandibular Canal
+### Temporomandibular Joints (bilateral)
+### Bone Quality
+
+## 6. DEVELOPMENTAL AND SKELETAL FINDINGS
+
+## 7. IMAGE QUALITY NOTES
+
+## 8. AREAS REQUIRING FURTHER INVESTIGATION
+
+## 9. CLINICAL RECOMMENDATIONS
+**PRIORITY 1 — Urgent (address within 1–2 weeks):**
+- (List items)
+**PRIORITY 2 — Routine (address within 1–3 months):**
+- (List items)
+**PRIORITY 3 — Monitor (review at next recall):**
+- (List items)
+**Additional Imaging Recommended:**
+- (List with rationale)
+**Specialist Referral Suggested:**
+- (List specialty and reason)
+
+---
+*This AI-assisted analysis is a clinical decision-support tool only.*`;
+
+const QUICK_PROMPT = `You are an expert dental radiologist. Quickly screen this OPG and provide:
+
+1. **Key Pathological Findings** — Most significant findings in bullet points (tooth/FDI, finding, severity).
+2. **Urgent Items** — Flag anything requiring prompt attention.
+3. **Overall Impression** — One sentence summary.
+4. **Recommended Next Steps** — Brief list.
+
+Be concise and clinically focused. Use FDI notation.`;
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('gemini_api_key');
+  if (saved) {
+    document.getElementById('apiKey').value = saved;
+    updateKeyStatus();
+  }
+  const savedModel = localStorage.getItem('gemini_model');
+  if (savedModel) document.getElementById('modelSel').value = savedModel;
+});
+
+// ── Key management ─────────────────────────────────────────────────────────
+function saveKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  const model = document.getElementById('modelSel').value;
+  if (key) localStorage.setItem('gemini_api_key', key);
+  localStorage.setItem('gemini_model', model);
+  updateKeyStatus();
+}
+
+function updateKeyStatus() {
+  const key = document.getElementById('apiKey').value.trim();
+  const el  = document.getElementById('keyStatus');
+  if (key.startsWith('AIza') && key.length > 20) {
+    el.textContent = '✅ Key saved — Gemini connected';
+    el.style.color = '#86efac';
+  } else if (key) {
+    el.textContent = '⚠️ Key format looks unusual';
+    el.style.color = '#fde68a';
+  } else {
+    el.textContent = 'No key set';
+    el.style.color = 'var(--muted)';
+  }
+}
+
+// ── File handling ──────────────────────────────────────────────────────────
+function onDragOver(e)  { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
+function onDragLeave()  { document.getElementById('dropZone').classList.remove('drag-over'); }
+function onDrop(e)      { e.preventDefault(); onDragLeave(); processFile(e.dataTransfer.files[0]); }
+function handleFileInput(input) { if (input.files[0]) processFile(input.files[0]); }
+
+function processFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    showStatus('Please upload an image file (JPEG, PNG, BMP, TIFF).', 'err');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    currentImageDataUrl = e.target.result;
+    currentMimeType     = file.type || 'image/jpeg';
+    // Compress if needed (Gemini limit ~4MB inline)
+    const dataUrl = await compressImage(currentImageDataUrl, 3500);
+    currentImageDataUrl = dataUrl;
+    const parts = dataUrl.split(',');
+    currentImageBase64 = parts[1];
+
+    document.getElementById('preview').src = currentImageDataUrl;
+    document.getElementById('previewSection').style.display = 'block';
+    document.getElementById('analysisActions').style.display = 'flex';
+    document.getElementById('dropZone').style.display = 'none';
+    showStatus(`✅ Image loaded: ${file.name} (${(file.size/1024).toFixed(0)} KB)`, 'ok');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function compressImage(dataUrl, maxKB = 3500) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      const maxDim = 2048;
+      if (w > maxDim || h > maxDim) {
+        const s = maxDim / Math.max(w, h);
+        w = Math.round(w * s); h = Math.round(h * s);
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      let q = 0.9, out = canvas.toDataURL('image/jpeg', q);
+      while (out.length > maxKB * 1024 * 1.37 && q > 0.3) {
+        q -= 0.1;
+        out = canvas.toDataURL('image/jpeg', q);
+      }
+      resolve(out);
+    };
+    img.src = dataUrl;
+  });
+}
+
+function applyEnh(btn, filter) {
+  document.querySelectorAll('.enh-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('preview').style.filter = filter === 'none' ? '' : filter;
+}
+
+// ── Analysis ───────────────────────────────────────────────────────────────
+async function runAnalysis(mode) {
+  const key   = document.getElementById('apiKey').value.trim() ||
+                localStorage.getItem('gemini_api_key') || '';
+  const model = document.getElementById('modelSel').value;
+
+  if (!key) {
+    showStatus('❌ Please enter your Gemini API key first.', 'err');
+    return;
+  }
+  if (!currentImageBase64) {
+    showStatus('❌ Please upload an OPG image first.', 'err');
+    return;
+  }
+
+  const prompt = mode === 'full' ? FULL_PROMPT : QUICK_PROMPT;
+  const btnFull  = document.getElementById('btnFull');
+  const btnQuick = document.getElementById('btnQuick');
+  btnFull.disabled = btnQuick.disabled = true;
+
+  const label = mode === 'full' ? 'Full analysis' : 'Quick screening';
+  showStatus(`<span class="spinner"></span>${label} running via ${model}…`, 'info');
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const body = {
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: 'image/jpeg', data: currentImageBase64 } },
+          { text: prompt }
+        ]
+      }],
+      generationConfig: { maxOutputTokens: 8192, temperature: 0.05 }
+    };
+
+    const res  = await fetch(url, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+
+    if (!res.ok) {
+      const msg = data.error?.message || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+
+    currentAnalysis = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!currentAnalysis) throw new Error('Empty response from API');
+
+    showStatus('✅ Analysis complete!', 'ok');
+    renderResults();
+
+  } catch (err) {
+    let msg = err.message;
+    if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid'))
+      msg = 'Invalid API key. Please check your Gemini key.';
+    else if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota'))
+      msg = 'Quota exceeded. Wait a moment or check your Gemini quota.';
+    showStatus(`❌ ${msg}`, 'err');
+  } finally {
+    btnFull.disabled = btnQuick.disabled = false;
+  }
+}
+
+// ── Render results ─────────────────────────────────────────────────────────
+function renderResults() {
+  if (!currentAnalysis) return;
+
+  currentFindings = parseFdiFindings(currentAnalysis);
+  currentMissing  = parseMissingTeeth(currentAnalysis);
+  currentRecs     = extractRecommendations(currentAnalysis);
+
+  document.getElementById('resultsSection').style.display = 'block';
+  document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Metrics
+  const counts = countUrgencies(currentFindings);
+  document.getElementById('metricsStrip').innerHTML = `
+    <div class="metric m-urgent">
+      <div class="val">${counts.urgent||0}</div><div class="lbl">🔴 Urgent</div>
+    </div>
+    <div class="metric m-patho">
+      <div class="val">${counts.pathology||0}</div><div class="lbl">🟠 Pathology</div>
+    </div>
+    <div class="metric m-restore">
+      <div class="val">${counts.restoration||0}</div><div class="lbl">🔵 Restored</div>
+    </div>
+    <div class="metric m-impact">
+      <div class="val">${counts.impacted||0}</div><div class="lbl">🟣 Impacted</div>
+    </div>
+    <div class="metric m-missing">
+      <div class="val">${currentMissing.length}</div><div class="lbl">⚫ Missing</div>
+    </div>`;
+
+  // Tooth chart
+  document.getElementById('toothChartDiv').innerHTML = renderToothChartSVG(currentFindings, currentMissing);
+
+  // Treatment plan
+  renderTreatmentPlan(currentRecs);
+
+  // Report
+  document.getElementById('reportContent').innerHTML =
+    typeof marked !== 'undefined' ? marked.parse(currentAnalysis) : `<pre>${currentAnalysis}</pre>`;
+}
+
+// ── FDI parsing ────────────────────────────────────────────────────────────
+function parseFdiFindings(text) {
+  const prio = ['urgent','pathology','impacted','restoration','monitor','normal','default'];
+  const rx   = {
+    urgent:      /abscess|urgent|caries|cavity|cavit|resorption|fracture|periapical|PAI [3-5]|Stage (III|IV)/i,
+    pathology:   /lucen|lesion|bone loss|periodont|Stage (II|III|IV)|furcation|PAI [2-5]|radiolucen/i,
+    restoration: /crown|amalgam|composite|filling|implant|RCT|root canal|obturat|restoration/i,
+    impacted:    /impacted|unerupt|mesioangul|distoangul|horizontal/i,
+    monitor:     /monitor|review|recall|sinus|mild|minimal/i,
+  };
+  const fdiRe = /\b([1-4][1-8])\b(.{0,120})/g;
+  const found = {};
+  let m;
+  while ((m = fdiRe.exec(text)) !== null) {
+    const tooth = m[1], snip = m[2];
+    let urgency = 'default';
+    for (const [u, r] of Object.entries(rx)) { if (r.test(snip)) { urgency = u; break; } }
+    if (!found[tooth] || prio.indexOf(urgency) < prio.indexOf(found[tooth].urgency))
+      found[tooth] = { tooth, urgency, snippet: snip.trim().slice(0, 80) };
+  }
+  return Object.values(found);
+}
+
+function parseMissingTeeth(text) {
+  const m = text.match(/(?:Missing Teeth|Missing|Absent)[^\n]*\n([\s\S]*?)(?=###|\n##|\s*$)/i);
+  if (!m) return [];
+  const missing = [];
+  const r = /\b([1-4][1-8])\b/g; let t;
+  while ((t = r.exec(m[1])) !== null) { if (!missing.includes(t[1])) missing.push(t[1]); }
+  return missing;
+}
+
+function extractRecommendations(text) {
+  const res = { p1:[], p2:[], p3:[], imaging:[], referral:[] };
+  const sec = text.match(/##\s*9\.?\s*CLINICAL RECOMMENDATIONS([\s\S]*?)(?=\n##\s|$)/i);
+  if (!sec) return res;
+  const body = sec[1];
+  const pats = {
+    p1:      /PRIORITY\s*1[^\n]*([\s\S]*?)(?=PRIORITY\s*2|Additional Imaging|Specialist|$)/i,
+    p2:      /PRIORITY\s*2[^\n]*([\s\S]*?)(?=PRIORITY\s*3|Additional Imaging|Specialist|$)/i,
+    p3:      /PRIORITY\s*3[^\n]*([\s\S]*?)(?=PRIORITY\s*4|Additional Imaging|Specialist|$)/i,
+    imaging: /Additional Imaging[^\n]*([\s\S]*?)(?=Specialist|$)/i,
+    referral:/Specialist Referral[^\n]*([\s\S]*?)(?=\n##|$)/i,
+  };
+  for (const [key, rx] of Object.entries(pats)) {
+    const m = body.match(rx);
+    if (m) res[key] = (m[1].match(/[-•*]\s*(.+?)(?=\n|$)/g) || [])
+      .map(l => l.replace(/^[-•*]\s*/,'').trim())
+      .filter(l => l && l !== '(List items)' && l.length > 4);
+  }
+  return res;
+}
+
+function countUrgencies(findings) {
+  const c = {};
+  findings.forEach(f => { c[f.urgency] = (c[f.urgency]||0) + 1; });
+  return c;
+}
+
+// ── SVG Tooth Chart ────────────────────────────────────────────────────────
+function renderToothChartSVG(findings, missing) {
+  const UPPER = ["18","17","16","15","14","13","12","11","21","22","23","24","25","26","27","28"];
+  const LOWER = ["48","47","46","45","44","43","42","41","31","32","33","34","35","36","37","38"];
+  const CW    = {1:29,2:29,3:32,4:36,5:36,6:45,7:45,8:47};
+  const CH=29, RH=22, GAP=3, PX=26, PY=22, AG=12;
+  const FILL  = {urgent:'#dc2626',pathology:'#ea580c',restoration:'#1d4ed8',
+                 impacted:'#7c3aed',monitor:'#b45309',normal:'#15803d',
+                 missing:'#0f172a',default:'#1e293b'};
+  const STK   = {urgent:'#fca5a5',pathology:'#fed7aa',restoration:'#bfdbfe',
+                 impacted:'#ddd6fe',monitor:'#fde68a',normal:'#bbf7d0',
+                 missing:'#334155',default:'#475569'};
+
+  const prio  = ['urgent','pathology','impacted','restoration','monitor','normal','default'];
+  const umap  = {};
+  findings.forEach(f => {
+    const t=f.tooth, u=f.urgency;
+    if (!umap[t] || prio.indexOf(u)<prio.indexOf(umap[t])) umap[t]=u;
+  });
+  missing.forEach(t => { umap[t]='missing'; });
+
+  const totalW = PX*2 + UPPER.reduce((s,t)=>s+(CW[+t[1]]||38),0) + GAP*15;
+  const rowH=CH+RH, lblH=13, legH=26;
+  const totalH = PY+lblH+rowH+AG+rowH+lblH+6+legH+4;
+  const mid = totalW/2;
+  const archTop = PY+lblH;
+
+  let s = `<svg width="${totalW}" height="${totalH}" xmlns="http://www.w3.org/2000/svg">`;
+  s += `<rect width="${totalW}" height="${totalH}" fill="#0f172a" rx="12"/>`;
+  s += `<line x1="${mid.toFixed(1)}" y1="${archTop}" x2="${mid.toFixed(1)}" y2="${archTop+rowH*2+AG}" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,3"/>`;
+  s += `<text x="${(mid-28).toFixed(1)}" y="${archTop-6}" fill="#475569" font-size="9" font-family="Arial">← R</text>`;
+  s += `<text x="${(mid+6).toFixed(1)}" y="${archTop-6}" fill="#475569" font-size="9" font-family="Arial">L →</text>`;
+
+  function drawRow(teeth, yB, flip) {
+    let x=PX, out='';
+    for (const t of teeth) {
+      const cw=CW[+t[1]]||38, u=umap[t]||'default';
+      const fill=FILL[u], stk=STK[u];
+      const rw=cw*.52, rfX=x+(cw-rw)/2;
+      const rxC=Math.min(cw*.28,9), rxR=Math.min(rw*.4,7);
+      let cy,ry,ly;
+      if (!flip) {
+        cy=yB+RH; ry=yB; ly=ry-3;
+        out+=`<rect x="${rfX.toFixed(1)}" y="${ry}" width="${rw.toFixed(1)}" height="${RH}" fill="${fill}" opacity=".5" rx="${rxR.toFixed(1)}"/>`;
+        out+=`<rect x="${x}" y="${cy}" width="${cw}" height="${CH}" fill="${fill}" rx="${rxC.toFixed(1)}" stroke="${stk}" stroke-width=".8"/>`;
+        out+=`<text x="${(x+cw/2).toFixed(1)}" y="${ly}" text-anchor="middle" fill="#64748b" font-size="8" font-family="Arial">${t}</text>`;
+      } else {
+        cy=yB; ry=yB+CH; ly=ry+RH+10;
+        out+=`<rect x="${x}" y="${cy}" width="${cw}" height="${CH}" fill="${fill}" rx="${rxC.toFixed(1)}" stroke="${stk}" stroke-width=".8"/>`;
+        out+=`<rect x="${rfX.toFixed(1)}" y="${ry}" width="${rw.toFixed(1)}" height="${RH}" fill="${fill}" opacity=".5" rx="${rxR.toFixed(1)}"/>`;
+        out+=`<text x="${(x+cw/2).toFixed(1)}" y="${ly}" text-anchor="middle" fill="#64748b" font-size="8" font-family="Arial">${t}</text>`;
+      }
+      if (!['default','missing','normal'].includes(u))
+        out+=`<circle cx="${(x+cw-5).toFixed(1)}" cy="${(cy+4).toFixed(1)}" r="3" fill="white" opacity=".9"/>`;
+      x+=cw+GAP;
+    }
+    return out;
+  }
+
+  s += drawRow(UPPER, archTop, false);
+  s += drawRow(LOWER, archTop+rowH+AG, true);
+
+  const legItems=[['urgent','Urgent'],['pathology','Pathology'],['restoration','Restored'],
+                  ['impacted','Impacted'],['monitor','Monitor'],['missing','Missing'],['default','No data']];
+  const step=totalW/legItems.length, ly2=totalH-legH+16;
+  let lx=PX/2;
+  for (const [k,lb] of legItems) {
+    s+=`<rect x="${lx.toFixed(1)}" y="${ly2-10}" width="12" height="12" fill="${FILL[k]}" rx="2" stroke="${STK[k]}" stroke-width=".6"/>`;
+    s+=`<text x="${(lx+15).toFixed(1)}" y="${ly2}" fill="#94a3b8" font-size="9" font-family="Arial">${lb}</text>`;
+    lx+=step;
+  }
+  s += '</svg>';
+  return s;
+}
+
+// ── Treatment plan ─────────────────────────────────────────────────────────
+function renderTreatmentPlan(recs) {
+  const div = document.getElementById('treatmentPlanDiv');
+  let html = '';
+  const sections = [
+    ['🔴 PRIORITY 1 — Urgent', recs.p1, 'ph-1', 'p1'],
+    ['🟡 PRIORITY 2 — Routine', recs.p2, 'ph-2', 'p2'],
+    ['🟢 PRIORITY 3 — Monitor', recs.p3, 'ph-3', 'p3'],
+    ['📸 Additional Imaging', recs.imaging, 'ph-i', 'pi'],
+  ];
+  for (const [heading, items, hcls, icls] of sections) {
+    if (!items?.length) continue;
+    html += `<div class="plan-heading ${hcls}">${heading}</div><ul class="plan-list">`;
+    items.forEach(i => { html += `<li class="plan-item ${icls}">${i}</li>`; });
+    html += '</ul>';
+  }
+  if (!html) html = '<p style="color:var(--muted);font-size:13px">Run Full Analysis to see the treatment plan.</p>';
+  div.innerHTML = html;
+}
+
+// ── Status messages ────────────────────────────────────────────────────────
+function showStatus(msg, type) {
+  const el = document.getElementById('statusBar');
+  el.className = `status-bar status-${type}`;
+  el.innerHTML = msg;
+  el.style.display = 'block';
+  if (type === 'ok') setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+// ── Export functions ───────────────────────────────────────────────────────
+function downloadText() {
+  if (!currentAnalysis) return;
+  const blob = new Blob([currentAnalysis], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `OPG_Report_${document.getElementById('patientName').value||'patient'}_${today()}.txt`;
+  a.click();
+}
+
+function downloadJSON() {
+  if (!currentAnalysis) return;
+  const data = {
+    patient_name:   document.getElementById('patientName').value,
+    patient_id:     document.getElementById('patientId').value,
+    dentist_name:   document.getElementById('dentistName').value,
+    clinic_name:    document.getElementById('clinicName').value,
+    date:           new Date().toISOString(),
+    findings:       currentFindings,
+    missing_teeth:  currentMissing,
+    recommendations:currentRecs,
+    analysis:       currentAnalysis,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `OPG_Data_${document.getElementById('patientName').value||'patient'}_${today()}.json`;
+  a.click();
+}
+
+function copyReport() {
+  if (!currentAnalysis) return;
+  navigator.clipboard.writeText(currentAnalysis)
+    .then(() => showStatus('✅ Report copied to clipboard.', 'ok'))
+    .catch(() => showStatus('❌ Clipboard access denied.', 'err'));
+}
+
+async function downloadPDF() {
+  if (!currentAnalysis || typeof jspdf === 'undefined') {
+    showStatus('❌ PDF library not loaded or no analysis available.', 'err');
+    return;
+  }
+  showStatus('<span class="spinner"></span>Building PDF…', 'info');
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 15, cW = W - M * 2;
+    let y = M;
+
+    // Header
+    doc.setFillColor(13, 148, 136);
+    doc.roundedRect(M, y, cW, 22, 3, 3, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(15); doc.setFont('helvetica','bold');
+    doc.text('DENTAL OPG ANALYSIS REPORT', W/2, y+9, {align:'center'});
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text('AI-Assisted Radiographic Analysis — Clinical Decision Support', W/2, y+16, {align:'center'});
+    y += 28;
+
+    // Patient info
+    doc.setTextColor(30,41,59); doc.setFontSize(8.5);
+    const patRows = [
+      ['Patient:',   document.getElementById('patientName').value||'—',
+       'Date:',      new Date().toLocaleDateString('en-GB')],
+      ['Patient ID:',document.getElementById('patientId').value||'—',
+       'Dentist:',   document.getElementById('dentistName').value||'—'],
+      ['Clinic:',    document.getElementById('clinicName').value||'—', '', ''],
+    ];
+    doc.setFillColor(241,245,249);
+    doc.rect(M, y-3, cW, patRows.length*7+4, 'F');
+    for (const row of patRows) {
+      doc.setFont('helvetica','bold'); doc.text(row[0], M+2, y);
+      doc.setFont('helvetica','normal'); doc.text(row[1], M+24, y);
+      doc.setFont('helvetica','bold'); doc.text(row[2], M+95, y);
+      doc.setFont('helvetica','normal'); doc.text(row[3], M+110, y);
+      y += 7;
+    }
+    y += 6;
+
+    // OPG image
+    if (currentImageDataUrl) {
+      try {
+        doc.addImage(currentImageDataUrl, 'JPEG', M, y, cW, 65);
+        y += 70;
+      } catch(_) {}
+    }
+
+    // Analysis text
+    doc.setTextColor(45,55,72); doc.setFont('helvetica','normal');
+    const cleanText = currentAnalysis
+      .replace(/#{1,4}\s*/g, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/`(.*?)`/g, '$1');
+
+    for (const rawLine of cleanText.split('\n')) {
+      const line = rawLine.trim();
+      if (!line) { y += 2; continue; }
+
+      const isHeading = rawLine.match(/^#{1,4}\s/);
+      if (isHeading) {
+        if (y > 268) { doc.addPage(); y = M; }
+        doc.setFont('helvetica','bold');
+        doc.setTextColor(13,148,136);
+        doc.setFontSize(9.5);
+        const wrapped = doc.splitTextToSize(line.replace(/^#+ /, ''), cW);
+        doc.text(wrapped, M, y);
+        y += wrapped.length * 5 + 2;
+        doc.setTextColor(45,55,72);
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(8);
+      } else {
+        doc.setFontSize(8);
+        const wrapped = doc.splitTextToSize(line, cW);
+        if (y + wrapped.length * 4.5 > 278) { doc.addPage(); y = M; }
+        doc.text(wrapped, M, y);
+        y += wrapped.length * 4.5;
+      }
+    }
+
+    // Disclaimer
+    if (y > 260) { doc.addPage(); y = M; }
+    y += 8;
+    doc.setFillColor(236,253,245);
+    doc.roundedRect(M, y, cW, 14, 2, 2, 'F');
+    doc.setTextColor(21,128,61); doc.setFontSize(7.5); doc.setFont('helvetica','bold');
+    doc.text('Clinical Disclaimer:', M+3, y+5);
+    doc.setFont('helvetica','normal');
+    const disc = 'AI-assisted decision-support tool only. All findings must be verified by a qualified dental professional.';
+    doc.text(disc, M+3, y+10);
+
+    // Page numbers
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7); doc.setTextColor(150,150,150); doc.setFont('helvetica','normal');
+      doc.text(`Dental OPG AI Assistant  ·  Page ${i} of ${pages}  ·  ${new Date().toLocaleDateString()}`,
+               W/2, 290, {align:'center'});
+    }
+
+    doc.save(`OPG_Report_${document.getElementById('patientName').value||'patient'}_${today()}.pdf`);
+    showStatus('✅ PDF downloaded.', 'ok');
+  } catch (e) {
+    showStatus(`❌ PDF error: ${e.message}`, 'err');
+  }
+}
+
+function today() { return new Date().toISOString().slice(0,10); }
+
+function clearAll() {
+  currentImageDataUrl = currentImageBase64 = currentMimeType = null;
+  currentAnalysis = null; currentFindings = []; currentMissing = []; currentRecs = {};
+  document.getElementById('fileInput').value = '';
+  document.getElementById('previewSection').style.display = 'none';
+  document.getElementById('analysisActions').style.display = 'none';
+  document.getElementById('dropZone').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('statusBar').style.display = 'none';
+  document.getElementById('preview').style.filter = '';
+  document.querySelectorAll('.enh-btn').forEach((b,i) => b.classList.toggle('active', i===0));
+}
+</script>
+</body>
+</html>
