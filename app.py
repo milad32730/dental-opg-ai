@@ -605,6 +605,312 @@ def tab_feedback():
             )
 
 
+def tab_dental_chart():
+    import streamlit.components.v1 as components
+    from tooth_chart import render_tooth_chart_html, tooth_display_name
+    from report_parser import (
+        extract_per_tooth_findings, parse_missing_teeth,
+        extract_recommendations, build_patient_summary,
+    )
+    from image_tools import parse_fdi_findings
+
+    st.subheader("🦷 Dental Chart & Treatment Plan")
+
+    if 'img' not in st.session_state:
+        st.info("Upload an OPG in the **Analyse OPG** tab first.")
+        return
+    if 'analysis' not in st.session_state:
+        st.warning("Run a **Full AI Analysis** first to generate the dental chart.")
+        return
+
+    analysis = st.session_state['analysis']
+
+    # Parse all findings
+    with st.spinner("Parsing findings…"):
+        findings    = parse_fdi_findings(analysis)
+        per_tooth   = extract_per_tooth_findings(analysis)
+        missing     = parse_missing_teeth(analysis)
+        recs        = extract_recommendations(analysis)
+        patient_rows = build_patient_summary(per_tooth)
+
+    # ── Urgency summary metrics ───────────────────────────────────────────────
+    urg_counts = {}
+    for f in findings:
+        urg_counts[f['urgency']] = urg_counts.get(f['urgency'], 0) + 1
+
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("🔴 Urgent",       urg_counts.get("urgent",      0))
+    m2.metric("🟠 Pathology",    urg_counts.get("pathology",   0))
+    m3.metric("🔵 Restored",     urg_counts.get("restoration", 0))
+    m4.metric("🟣 Impacted",     urg_counts.get("impacted",    0))
+    m5.metric("🟡 Monitor",      urg_counts.get("monitor",     0))
+    m6.metric("⚫ Missing",       len(missing))
+
+    st.markdown("---")
+
+    # ── SVG Tooth Chart ───────────────────────────────────────────────────────
+    st.markdown("### Interactive Dental Arch Chart")
+    chart_html = render_tooth_chart_html(findings, missing_teeth=missing)
+    components.html(chart_html, height=230, scrolling=False)
+
+    st.markdown("---")
+
+    # ── Per-tooth selector + Treatment plan ───────────────────────────────────
+    left_col, right_col = st.columns([1, 2])
+
+    with left_col:
+        st.markdown("#### 🔍 Tooth Finder")
+        teeth_options = sorted(per_tooth.keys(), key=lambda t: int(t))
+        if not teeth_options:
+            st.info("No per-tooth findings parsed. Try the Full Analysis mode.")
+        else:
+            selected = st.selectbox(
+                "Select tooth",
+                teeth_options,
+                format_func=lambda t: f"Tooth {t} — {tooth_display_name(t)}",
+                key="chart_tooth_sel",
+            )
+            if selected:
+                tooth_fs = per_tooth[selected]
+                _CONF_BADGE = {"HIGH": "🟢 HIGH", "MEDIUM": "🟡 MEDIUM", "LOW": "🔴 LOW", "": ""}
+                _URG_BORDER = {
+                    "urgent": "#dc2626", "pathology": "#ea580c",
+                    "restoration": "#1d4ed8", "impacted": "#7c3aed",
+                    "monitor": "#b45309", "default": "#475569",
+                }
+                for f in tooth_fs:
+                    border = _URG_BORDER.get(f["urgency"], "#475569")
+                    badge  = _CONF_BADGE.get(f["confidence"], "")
+                    st.markdown(
+                        f"""<div style="background:#1e293b;border-left:4px solid {border};
+                        border-radius:6px;padding:10px 12px;margin-bottom:8px;">
+                        <b style="color:#e2e8f0">{f['category'].replace('_',' ').title()}</b>
+                        {"&nbsp;&nbsp;<small style='color:#94a3b8'>" + badge + "</small>" if badge else ""}
+                        <br><small style="color:#94a3b8">{f['description']}</small>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
+
+    with right_col:
+        st.markdown("#### 📋 Treatment Priority Plan")
+        _P_CONFIG = {
+            "🔴 PRIORITY 1 — Urgent (within 1–2 weeks)":   ("priority_1", "#dc2626", "#450a0a"),
+            "🟡 PRIORITY 2 — Routine (within 1–3 months)": ("priority_2", "#b45309", "#451a03"),
+            "🟢 PRIORITY 3 — Monitor (next recall)":        ("priority_3", "#15803d", "#052e16"),
+        }
+        any_recs = False
+        for heading, (key, border, bg) in _P_CONFIG.items():
+            items = recs.get(key, [])
+            if items:
+                any_recs = True
+                st.markdown(f"**{heading}**")
+                for item in items:
+                    st.markdown(
+                        f'<div style="background:{bg};border-left:3px solid {border};'
+                        f'padding:7px 12px;border-radius:5px;margin-bottom:4px;'
+                        f'font-size:13px;color:#f1f5f9">{item}</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.markdown("")
+
+        if not any_recs:
+            st.info("Run a Full AI Analysis to populate the treatment plan.")
+
+        if recs.get("imaging"):
+            st.markdown("**📸 Additional Imaging Suggested:**")
+            for item in recs["imaging"]:
+                st.markdown(f"• {item}")
+        if recs.get("referral"):
+            st.markdown("**👨‍⚕️ Specialist Referral:**")
+            for item in recs["referral"]:
+                st.markdown(f"• {item}")
+
+    st.markdown("---")
+
+    # ── Patient Communication Summary ─────────────────────────────────────────
+    st.markdown("### 👥 Patient Summary  *(plain language)*")
+    st.caption("Share this with your patient to explain findings and improve treatment acceptance.")
+
+    if patient_rows:
+        # Colour-coded finding cards in a grid
+        cols = st.columns(3)
+        _URG_EMO = {
+            "urgent": "🔴", "pathology": "🟠", "restoration": "🔵",
+            "impacted": "🟣", "monitor": "🟡", "normal": "🟢", "default": "⚪",
+        }
+        for i, row in enumerate(patient_rows):
+            with cols[i % 3]:
+                emo   = _URG_EMO.get(row["urgency"], "⚪")
+                label = {
+                    "urgent": "Needs urgent care", "pathology": "Disease detected",
+                    "restoration": "Has dental work", "impacted": "Impacted tooth",
+                    "monitor": "Monitor", "normal": "Healthy", "default": "No data",
+                }.get(row["urgency"], "")
+                st.markdown(
+                    f'<div style="background:#1e293b;border-radius:8px;'
+                    f'padding:10px;margin-bottom:8px;text-align:center;">'
+                    f'<div style="font-size:18px">{emo}</div>'
+                    f'<div style="color:#f1f5f9;font-weight:bold;font-size:13px">Tooth {row["tooth"]}</div>'
+                    f'<div style="color:#94a3b8;font-size:11px">{row["name"]}</div>'
+                    f'<div style="color:#cbd5e1;font-size:11px;margin-top:4px">{label}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.success("✅ No significant findings to report to the patient.")
+
+    st.markdown("---")
+
+    # ── Patient PDF export ────────────────────────────────────────────────────
+    st.markdown("### 📄 Export Patient Report")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("📋 Generate Patient-Friendly PDF", type="primary",
+                     use_container_width=True, key="btn_patient_pdf"):
+            from report_generator import generate_patient_report
+            img_b = get_image_bytes(st.session_state['img'])
+            pdf = generate_patient_report(
+                patient_name  = st.session_state.get('a_patient_name', ''),
+                patient_id    = st.session_state.get('a_patient_id',   ''),
+                dentist_name  = st.session_state.get('a_dentist_name', ''),
+                clinic_name   = st.session_state.get('a_clinic_name',  ''),
+                patient_rows  = patient_rows,
+                recommendations = recs,
+                img_bytes     = img_b,
+            )
+            st.session_state['patient_pdf'] = pdf
+
+        if 'patient_pdf' in st.session_state:
+            pname = st.session_state.get('a_patient_name', 'patient')
+            st.download_button(
+                "⬇️ Download Patient Report PDF",
+                data=st.session_state['patient_pdf'],
+                file_name=f"patient_report_{pname}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key="dl_patient_pdf",
+            )
+    with col_b:
+        st.markdown("""
+<div style="background:#1e293b;border-radius:8px;padding:12px 16px;">
+<b style="color:#e2e8f0">Patient Report includes:</b>
+<ul style="color:#94a3b8;font-size:13px;margin-top:6px">
+<li>Plain-English findings (no clinical jargon)</li>
+<li>Tooth-by-tooth status table</li>
+<li>Colour-coded treatment priorities</li>
+<li>Your OPG image</li>
+<li>Ready to print & hand to patient</li>
+</ul>
+</div>
+""", unsafe_allow_html=True)
+
+
+def tab_analytics():
+    import re as _re
+    import pandas as pd
+    from knowledge_base import get_feedback_stats, get_all_feedback
+
+    st.subheader("📊 Practice Analytics")
+
+    cases = get_all_cases()
+    if not cases:
+        st.info("No cases yet. Analyse some OPGs and save them to build your analytics.")
+        return
+
+    df = pd.DataFrame(
+        cases,
+        columns=['id','patient_name','patient_id','dentist_name','clinic_name',
+                 'date','image_path','analysis','report_path','notes','created_at'],
+    )
+    df['date_dt'] = pd.to_datetime(df['date'], errors='coerce')
+    df['month']   = df['date_dt'].dt.to_period('M').astype(str)
+    df['week']    = df['date_dt'].dt.to_period('W').astype(str)
+
+    # ── Key metrics ───────────────────────────────────────────────────────────
+    stats = get_feedback_stats()
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Cases",       len(df))
+    c2.metric("Unique Patients",   df['patient_name'].nunique())
+    c3.metric("Dentists",          df['dentist_name'].nunique())
+    c4.metric("AI Accuracy",       f"{stats['accuracy_pct']}%" if stats else "—",
+              help="Based on dentist feedback verdicts")
+
+    st.markdown("---")
+
+    chart_col, finding_col = st.columns(2)
+
+    # Cases over time
+    with chart_col:
+        st.markdown("**📅 Cases per Month**")
+        monthly = df.groupby('month').size().reset_index(name='Cases')
+        if len(monthly) >= 1:
+            st.bar_chart(monthly.set_index('month'), height=240)
+        else:
+            st.info("Need more cases for timeline view.")
+
+    # Most common finding types
+    with finding_col:
+        st.markdown("**🦷 Most Common Findings (across all reports)**")
+        kw_map = {
+            "Caries":          r"caries|cavit|D3",
+            "Periapical":      r"periapical|PAI [3-5]",
+            "Bone Loss":       r"bone loss|periodont|Stage (II|III|IV)",
+            "Impaction":       r"impacted|Winter|Pell",
+            "Missing Teeth":   r"missing|absent",
+            "Calcification":   r"calcif|sialolith|carotid",
+            "Restorations":    r"crown|filling|implant|RCT",
+        }
+        counts = {
+            label: sum(1 for a in df['analysis'] if _re.search(pat, str(a), _re.I))
+            for label, pat in kw_map.items()
+        }
+        finding_df = pd.DataFrame(
+            [(k, v) for k, v in counts.items() if v > 0],
+            columns=['Finding', 'Cases'],
+        ).sort_values('Cases', ascending=False)
+        if not finding_df.empty:
+            st.bar_chart(finding_df.set_index('Finding'), height=240)
+        else:
+            st.info("Keyword scan returned no results in the current cases.")
+
+    # AI Learning trend
+    feedback = get_all_feedback()
+    if len(feedback) >= 3:
+        st.markdown("---")
+        st.markdown("**🧠 AI Accuracy Trend (rolling 5-feedback window)**")
+        fb_df = pd.DataFrame(
+            feedback,
+            columns=['id','case_id','category','tooth_fdi','ai_finding',
+                     'verdict','correct_finding','severity','notes','timestamp'],
+        )
+        fb_df['confirmed'] = (fb_df['verdict'] == 'confirmed').astype(int)
+        fb_df['rolling_acc'] = (
+            fb_df['confirmed']
+            .rolling(window=min(5, len(fb_df)), min_periods=1)
+            .mean() * 100
+        )
+        fb_df.index = range(1, len(fb_df) + 1)
+        st.line_chart(fb_df[['rolling_acc']].rename(columns={'rolling_acc': 'Accuracy %'}),
+                      height=220)
+
+    # Feedback breakdown
+    if stats and stats['total'] > 0:
+        st.markdown("---")
+        st.markdown("**📋 Feedback Breakdown**")
+        fb_cols = st.columns(4)
+        fb_cols[0].metric("Confirmed ✅",       stats['confirmed'])
+        fb_cols[1].metric("Corrected ✏️",        stats['corrected'])
+        fb_cols[2].metric("Missed ➕",           stats['missed'])
+        fb_cols[3].metric("False Positives ❌",  stats['false_positive'])
+
+    # Recent cases table
+    st.markdown("---")
+    st.markdown("**📋 Recent Cases**")
+    show_df = df[['id','date','patient_name','dentist_name','clinic_name']].head(15).copy()
+    show_df.columns = ['Case #', 'Date', 'Patient', 'Dentist', 'Clinic']
+    st.dataframe(show_df, use_container_width=True, hide_index=True)
+
+
 def tab_image_tools():
     from image_tools import (
         parse_fdi_findings, create_finding_overlay,
@@ -883,13 +1189,24 @@ def main():
 
     sidebar()
 
-    tabs = st.tabs(["🔬 Analyse OPG", "🖼️ Image Tools", "📁 Case History", "📊 Compare Cases", "🧠 Feedback & Learning", "ℹ️ About"])
+    tabs = st.tabs([
+        "🔬 Analyse OPG",
+        "🦷 Dental Chart & Plan",
+        "🖼️ Image Tools",
+        "📊 Analytics",
+        "📁 Case History",
+        "🔄 Compare Cases",
+        "🧠 Feedback & Learning",
+        "ℹ️ About",
+    ])
     with tabs[0]: tab_analyze()
-    with tabs[1]: tab_image_tools()
-    with tabs[2]: tab_history()
-    with tabs[3]: tab_compare()
-    with tabs[4]: tab_feedback()
-    with tabs[5]: tab_about()
+    with tabs[1]: tab_dental_chart()
+    with tabs[2]: tab_image_tools()
+    with tabs[3]: tab_analytics()
+    with tabs[4]: tab_history()
+    with tabs[5]: tab_compare()
+    with tabs[6]: tab_feedback()
+    with tabs[7]: tab_about()
 
 
 if __name__ == "__main__":
